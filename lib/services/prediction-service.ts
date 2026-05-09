@@ -5,7 +5,6 @@ import {
   CORRIDOR_SCOPE,
 } from "@/lib/corridor/definition";
 import {
-  getFeatureSnapshotsForSegmentsAtTimestamp,
   getLatestFeatureSnapshotsForSegments,
   getRecentFeatureSnapshotsForSegments,
 } from "@/lib/repositories/feature-snapshot-repository";
@@ -14,6 +13,7 @@ import {
   getModelRunByVersion,
 } from "@/lib/repositories/model-run-repository";
 import {
+  getPredictionsForSegmentsInCreatedBatch,
   getPredictionsForSegmentsAtTimestamp,
   listPredictionSnapshotCandidates,
   type PredictionSnapshotCandidate,
@@ -310,11 +310,17 @@ export async function getLatestPredictionsPayload() {
   const latestPredictionTimestampUtc = snapshot?.timestampUtc ?? null;
   const predictions =
     snapshot && latestPredictionTimestampUtc
-      ? await getPredictionsForSegmentsAtTimestamp({
-          segmentIds,
-          modelVersion: snapshot.modelVersion,
-          timestampUtc: latestPredictionTimestampUtc,
-        })
+      ? snapshot.createdAt
+        ? await getPredictionsForSegmentsInCreatedBatch({
+            segmentIds,
+            modelVersion: snapshot.modelVersion,
+            createdAt: snapshot.createdAt,
+          })
+        : await getPredictionsForSegmentsAtTimestamp({
+            segmentIds,
+            modelVersion: snapshot.modelVersion,
+            timestampUtc: latestPredictionTimestampUtc,
+          })
       : [];
   const predictionsBySegmentId = new Map(
     predictions
@@ -398,17 +404,23 @@ export async function getPredictionTrendPayload() {
     : null;
   const predictions =
     snapshot && latestPredictionTimestampUtc
-      ? await getPredictionsForSegmentsAtTimestamp({
-          segmentIds,
-          modelVersion: snapshot.modelVersion,
-          timestampUtc: latestPredictionTimestampUtc,
-        })
+      ? snapshot.createdAt
+        ? await getPredictionsForSegmentsInCreatedBatch({
+            segmentIds,
+            modelVersion: snapshot.modelVersion,
+            createdAt: snapshot.createdAt,
+          })
+        : await getPredictionsForSegmentsAtTimestamp({
+            segmentIds,
+            modelVersion: snapshot.modelVersion,
+            timestampUtc: latestPredictionTimestampUtc,
+          })
       : [];
   const latestFeatures = predictionFeatureTimestampUtc
-    ? await getFeatureSnapshotsForSegmentsAtTimestamp({
+    ? await getLatestFeatureSnapshotsForSegments({
         segmentIds,
         featureVersion: FEATURE_VERSION,
-        timestampUtc: predictionFeatureTimestampUtc,
+        atOrBeforeUtc: predictionFeatureTimestampUtc,
       })
     : await getLatestFeatureSnapshotsForSegments({
         segmentIds,

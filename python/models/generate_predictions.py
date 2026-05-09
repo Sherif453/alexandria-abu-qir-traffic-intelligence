@@ -356,9 +356,13 @@ def predict(
   horizon_minutes: int,
   decision_policy: dict[str, Any] | None,
   decisions: list[Any] | None = None,
+  prediction_timestamp_utc: datetime | None = None,
 ) -> list[PredictionWrite]:
   feature_rows = [feature.to_feature_row() for feature in features]
   predicted_labels = model.predict(feature_rows).tolist()
+  shared_prediction_timestamp_utc = prediction_timestamp_utc or (
+    max(feature.timestamp_utc for feature in features) + timedelta(minutes=horizon_minutes)
+  )
   predictions: list[PredictionWrite] = []
 
   for index, feature in enumerate(features):
@@ -373,7 +377,7 @@ def predict(
     predictions.append(
       PredictionWrite(
         segment_id=feature.segment_id,
-        timestamp_utc=feature.timestamp_utc + timedelta(minutes=horizon_minutes),
+        timestamp_utc=shared_prediction_timestamp_utc,
         predicted_label=predicted_label,
         confidence=confidence,
         model_version=model_version,
@@ -504,6 +508,9 @@ def main() -> None:
     joblib = import_joblib()
     model = joblib.load(model_path)
     decisions = build_prediction_decisions(model, features, decision_policy)
+    prediction_timestamp_utc = max(feature.timestamp_utc for feature in features) + timedelta(
+      minutes=args.horizon_minutes,
+    )
     predictions = predict(
       model=model,
       features=features,
@@ -511,6 +518,7 @@ def main() -> None:
       horizon_minutes=args.horizon_minutes,
       decision_policy=decision_policy,
       decisions=decisions,
+      prediction_timestamp_utc=prediction_timestamp_utc,
     )
     written = 0 if args.dry_run else write_predictions(connection, predictions, model_version)
     feature_timestamps = [feature.timestamp_utc for feature in features]

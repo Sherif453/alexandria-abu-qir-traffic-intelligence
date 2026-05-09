@@ -1,3 +1,5 @@
+import { Prisma } from "@prisma/client";
+
 import { prisma } from "@/lib/db";
 
 export type PredictionSnapshotCandidate = {
@@ -36,27 +38,41 @@ export async function getPredictionsForSegmentsAtTimestamp(params: {
     return [];
   }
 
-  const predictions = await prisma.prediction.findMany({
-    where: {
-      segmentId: {
-        in: params.segmentIds,
-      },
-      modelVersion: params.modelVersion,
-      timestampUtc: params.timestampUtc,
-    },
-    orderBy: [
-      {
-        segmentId: "asc",
-      },
-      {
-        createdAt: "desc",
-      },
-    ],
-  });
+  const predictions = await prisma.$queryRaw<
+    Awaited<ReturnType<typeof prisma.prediction.findMany>>
+  >`
+    SELECT *
+    FROM "Prediction"
+    WHERE "modelVersion" = ${params.modelVersion}
+      AND "timestampUtc" = ${params.timestampUtc.toISOString()}
+      AND "segmentId" IN (${Prisma.join(params.segmentIds)})
+    ORDER BY "segmentId" ASC, "createdAt" DESC
+  `;
 
-  const predictionsBySegmentId = new Map<string, (typeof predictions)[number]>();
+  const resolvedPredictions =
+    predictions.length > 0
+      ? predictions
+      : await prisma.prediction.findMany({
+          where: {
+            segmentId: {
+              in: params.segmentIds,
+            },
+            modelVersion: params.modelVersion,
+            timestampUtc: params.timestampUtc,
+          },
+          orderBy: [
+            {
+              segmentId: "asc",
+            },
+            {
+              createdAt: "desc",
+            },
+          ],
+        });
 
-  for (const prediction of predictions) {
+  const predictionsBySegmentId = new Map<string, (typeof resolvedPredictions)[number]>();
+
+  for (const prediction of resolvedPredictions) {
     if (!predictionsBySegmentId.has(prediction.segmentId)) {
       predictionsBySegmentId.set(prediction.segmentId, prediction);
     }
